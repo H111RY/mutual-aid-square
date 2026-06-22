@@ -1,0 +1,172 @@
+/* ============================================
+   Design Tokens — 互助广场 UI 组件库
+   所有视觉属性集中管理，便于统一调整
+   ============================================ */
+
+:root {
+  /* ── 品牌色 ── */
+  --brand-50:  #EBF2FA;
+  --brand-100: #D6E5F5;
+  --brand-200: #A8C8EB;
+  --brand-300: #7AABE0;
+  --brand-400: #4A90D9;
+  --brand-500: #357ABD;
+  --brand-600: #2A62A0;
+  --brand-700: #1F4A82;
+
+  /* ── 语义色 ── */
+  --red-50:  #FFEBEE;
+  --red-500: #C62828;
+  --red-700: #8E0000;
+
+  --amber-50:  #FFF8E1;
+  --amber-500: #F5A623;
+  --amber-700: #8D6E00;
+
+  --green-50:  #E8F5E9;
+  --green-500: #2E7D32;
+  --green-700: #1B5E20;
+
+  --blue-50:  #E3F2FD;
+  --blue-500: #1565C0;
+
+  --purple-50:  #F3E5F5;
+  --purple-500: #7B1FA2;
+
+  --orange-50:  #FFF3E0;
+  --orange-500: #E65100;
+
+  --brown-50:  #EFEBE9;
+  --brown-500: #4E342E;
+
+  --cyan-50:  #E0F7FA;
+  --cyan-500: #00838F;
+
+  /* ── 中性色 ── */
+  --gray-50:  #FAFAFA;
+  --gray-100: #F5F5F5;
+  --gray-200: #EEEEEE;
+  --gray-300: #E0E0E0;
+  --gray-400: #BDBDBD;
+  --gray-500: #999999;
+  --gray-600: #666666;
+  --gray-700: #424242;
+  --gray-800: #2A2A2A;
+  --gray-900: #1A1A1A;
+
+  /* ── 文字 ── */
+  --text-primary:   var(--gray-900);
+  --text-secondary: var(--gray-600);
+  --text-muted:     var(--gray-500);
+  --text-white:     #FFFFFF;
+  --text-link:      var(--brand-400);
+  --text-danger:    var(--red-500);
+
+  /* ── 背景 ── */
+  --bg-page:        var(--gray-100);
+  --bg-card:        #FFFFFF;
+  --bg-highlight:   var(--amber-50);
+  --bg-overlay:     rgba(0, 0, 0, 0.45);
+
+  /* ── 边框 ── */
+  --border-light:   var(--gray-200);
+  --border-normal:  var(--gray-300);
+  --border-highlight: #FFE082;
+
+  /* ── 字号阶梯 ── */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
+
+  /* ── 行高 ── */
+  --leading-normal:  1.6;
+  --leading-relaxed: 1.8;
+  --leading-loose:   2.0;
+
+  /* ── 字重 ── */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ── 间距 ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── 圆角 ── */
+  --radius-sm:   6px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  /* ── 阴影 ── */
+  --shadow-xs:  0 1px 2px rgba(0,0,0,0.04);
+  --shadow-sm:  0 1px 4px rgba(0,0,0,0.06);
+  --shadow-md:  0 2px 8px rgba(0,0,0,0.08);
+  --shadow-lg:  0 4px 16px rgba(0,0,0,0.10);
+  --shadow-xl:  0 8px 32px rgba(0,0,0,0.12);
+  --shadow-float: 0 4px 16px rgba(74,144,217,0.35);
+
+  /* ── 过渡 ── */
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 350ms;
+
+  /* ── 适老化 ── */
+  --tap-min:  44px;
+  --tap-comfortable: 52px;
+
+  /* ── 布局 ── */
+  --content-max: 720px;
+  --header-height: 56px;
+}
+
+/* ========== 大字体模式（2x 字号）========== */
+body.font-large {
+  --text-xs:   1.5rem;      /* 0.75 × 2 */
+  --text-sm:   1.75rem;     /* 0.875 × 2 */
+  --text-base: 2rem;        /* 1 × 2 */
+  --text-lg:   2.25rem;     /* 1.125 × 2 */
+  --text-xl:   2.5rem;      /* 1.25 × 2 */
+  --text-2xl:  3rem;        /* 1.5 × 2 */
+  --text-3xl:  3.75rem;     /* 1.875 × 2 */
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+  --space-10: 80px;
+  --space-12: 96px;
+
+  --radius-sm: 12px;
+  --radius-md: 24px;
+  --radius-lg: 32px;
+  --radius-xl: 40px;
+
+  --tap-min: 60px;
+  --tap-comfortable: 72px;
+
+  --leading-normal:  1.9;
+  --leading-relaxed: 2.1;
+  --leading-loose:   2.3;
+
+  --header-height: 80px;
+  --content-max: 720px;
+}
