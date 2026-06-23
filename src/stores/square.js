@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem } from '@/storage/core'
 import { useAppStore } from '@/stores/app'
-import { getUserId, db, _ } from '@/cloudbase'
+import { getUserId, AV } from '@/leancloud'
 
 export const useSquareStore = defineStore('square', () => {
   /* ========== 字体模式 ========== */
@@ -44,15 +44,15 @@ export const useSquareStore = defineStore('square', () => {
 
   async function fetchNotices() {
     try {
-      const { data } = await db.collection('notices')
-        .orderBy('createdAt', 'desc')
-        .limit(10)
-        .get()
+      const query = new AV.Query('notices')
+      query.descending('createdAt')
+      query.limit(10)
+      const data = await query.find()
       notices.value = data.map(n => ({
-        id: n._id,
-        title: n.title || '',
-        content: n.content || '',
-        createdAt: n.createdAt
+        id: n.id,
+        title: n.get('title') || '',
+        content: n.get('content') || '',
+        createdAt: n.get('createdAt')
       }))
     } catch { /* 静默 */ }
   }
@@ -77,7 +77,8 @@ export const useSquareStore = defineStore('square', () => {
     console.log('[addPost] 当前用户 UID:', uid)
     if (!uid) throw new Error('请先登录')
 
-    const doc = {
+    const post = new AV.Object('Posts')
+    post.set({
       category: postData.category,
       content: postData.content,
       images: postData.images || [],
@@ -87,29 +88,22 @@ export const useSquareStore = defineStore('square', () => {
       authorBuilding: appStore.user.building || '',
       likeCount: 0,
       commentCount: 0,
-      isTop: false,
-      createdAt: db.serverDate(),
-      updatedAt: db.serverDate()
-    }
-    console.log('[addPost] 组装完成，帖子数据:', JSON.stringify(doc, null, 2))
+      isTop: false
+    })
+    console.log('[addPost] 组装完成，帖子数据:', JSON.stringify(post.toJSON(), null, 2))
 
-    console.log('[addPost] 准备调用 db.collection("posts").add() ...')
-    let result
+    console.log('[addPost] 准备调用 post.save() ...')
     try {
-      result = await db.collection('posts').add(doc)
-      console.log('[addPost] 写入成功！返回结果:', JSON.stringify(result, null, 2))
+      await post.save()
+      console.log('[addPost] 写入成功！objectId:', post.id)
     } catch (e) {
       console.error('[addPost] 写入失败！错误:', e)
       console.error('[addPost] 错误详情:', e.message, e.code, e.stack)
       throw e
     }
 
-    const formatted = formatPost({
-      _id: result.id,
-      ...doc,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    })
+    const plain = avToPlain(post)
+    const formatted = formatPost(plain)
     console.log('[addPost] 格式化完成，本地帖子 ID:', formatted.id)
 
     const curTab = activeTabValue.value
@@ -138,38 +132,34 @@ export const useSquareStore = defineStore('square', () => {
     isLoading.value = true
 
     try {
-      let query = db.collection('posts')
+      const query = new AV.Query('Posts')
 
       if (activeTabValue.value !== 'all') {
-        query = query.where({ category: activeTabValue.value })
+        query.equalTo('category', activeTabValue.value)
       }
 
-      const { data } = await query
-        .orderBy('createdAt', 'desc')
-        .skip((p - 1) * PAGE_SIZE)
-        .limit(PAGE_SIZE)
-        .get()
+      query.descending('createdAt')
+      query.skip((p - 1) * PAGE_SIZE)
+      query.limit(PAGE_SIZE)
+
+      const data = await query.find()
 
       // 获取当前用户点赞状态
       let likedPostIds = new Set()
       const uid = getUserId()
-      if (uid) {
-        const postIds = data.map(d => d._id)
-        if (postIds.length > 0) {
-          const { data: likesData } = await db.collection('likes')
-            .where({
-              userId: uid,
-              postId: db.command.in(postIds)
-            })
-            .get()
-          likesData.forEach(l => likedPostIds.add(l.postId))
-        }
+      if (uid && data.length > 0) {
+        const postIds = data.map(d => d.id)
+        const likeQuery = new AV.Query('Likes')
+        likeQuery.equalTo('userId', uid)
+        likeQuery.containedIn('postId', postIds)
+        const likesData = await likeQuery.find()
+        likesData.forEach(l => likedPostIds.add(l.get('postId')))
       }
 
-      const list = data.map(item => formatPost({
-        ...item,
-        isLiked: likedPostIds.has(item._id)
-      }))
+      const list = data.map(item => {
+        const plain = avToPlain(item)
+        return formatPost({ ...plain, isLiked: likedPostIds.has(item.id) })
+      })
 
       posts.value = reset ? list : [...posts.value, ...list]
       page.value = p + 1
@@ -185,7 +175,7 @@ export const useSquareStore = defineStore('square', () => {
 
   function clearError() { fetchError.value = '' }
 
-  /* ── 点赞（乐观更新 + CloudBase 持久化）── */
+  /* ── 点赞（乐观更新 + LeanCloud 持久化）── */
   async function toggleLike(postId) {
     const post = posts.value.find(p => p.id === postId)
     if (!post) return
@@ -197,26 +187,29 @@ export const useSquareStore = defineStore('square', () => {
       return
     }
 
-    const { data: existing } = await db.collection('likes')
-      .where({ postId, userId: uid })
-      .get()
+    const likeQuery = new AV.Query('Likes')
+    likeQuery.equalTo('postId', postId)
+    likeQuery.equalTo('userId', uid)
+    const existing = await likeQuery.first()
 
-    const wasLiked = existing.length > 0
+    const wasLiked = !!existing
     post.isLiked = !wasLiked
     post.likeCount += post.isLiked ? 1 : -1
     if (post.likeCount < 0) post.likeCount = 0
 
     try {
-      if (existing.length > 0) {
-        await db.collection('likes').doc(existing[0]._id).remove()
+      if (existing) {
+        await existing.destroy()
       } else {
-        await db.collection('likes').add({ postId, userId: uid, createdAt: db.serverDate() })
+        const like = new AV.Object('Likes')
+        like.set({ postId, userId: uid })
+        await like.save()
       }
       // 同步更新帖子 likeCount
       const delta = wasLiked ? -1 : 1
-      await db.collection('posts').doc(postId).update({
-        likeCount: _.inc(delta)
-      })
+      const postObj = AV.Object.createWithoutData('Posts', postId)
+      postObj.increment('likeCount', delta)
+      await postObj.save()
     } catch {
       // 回滚
       post.isLiked = wasLiked
@@ -226,38 +219,41 @@ export const useSquareStore = defineStore('square', () => {
 
   /** 获取单个帖子（供详情页用） */
   async function getPostById(id) {
-    const { data: postData } = await db.collection('posts').doc(id).get()
-    if (!postData || postData.length === 0) return null
+    try {
+      const post = await new AV.Query('Posts').get(id)
+      const plain = avToPlain(post)
 
-    const post = postData[0]
+      const commentQuery = new AV.Query('Comments')
+      commentQuery.equalTo('postId', id)
+      commentQuery.descending('createdAt')
+      const comments = await commentQuery.find()
 
-    const { data: comments } = await db.collection('comments')
-      .where({ postId: id })
-      .orderBy('createdAt', 'desc')
-      .get()
+      const uid = getUserId()
+      let isLiked = false
+      if (uid) {
+        const likeQuery = new AV.Query('Likes')
+        likeQuery.equalTo('postId', id)
+        likeQuery.equalTo('userId', uid)
+        const like = await likeQuery.first()
+        isLiked = !!like
+      }
 
-    const uid = getUserId()
-    let isLiked = false
-    if (uid) {
-      const { data: likesData } = await db.collection('likes')
-        .where({ postId: id, userId: uid })
-        .get()
-      isLiked = likesData.length > 0
+      return formatPost({
+        ...plain,
+        isLiked,
+        comments: comments.map(c => ({
+          id: c.id,
+          content: c.get('content'),
+          author: {
+            nickname: c.get('authorNickname') || '新用户',
+            avatar: c.get('authorAvatar') || ''
+          },
+          created_at: c.get('createdAt')
+        }))
+      })
+    } catch {
+      return null
     }
-
-    return formatPost({
-      ...post,
-      isLiked,
-      comments: comments.map(c => ({
-        id: c._id,
-        content: c.content,
-        author: {
-          nickname: c.authorNickname || '新用户',
-          avatar: c.authorAvatar || ''
-        },
-        created_at: c.createdAt
-      }))
-    })
   }
 
   /** 添加评论到帖子 */
@@ -266,19 +262,20 @@ export const useSquareStore = defineStore('square', () => {
     const uid = getUserId()
     if (!uid) throw new Error('请先登录')
 
-    await db.collection('comments').add({
+    const c = new AV.Object('Comments')
+    c.set({
       postId,
       authorId: uid,
       authorNickname: appStore.user.nickname || '新用户',
       authorAvatar: appStore.user.avatar || '',
-      content: comment.content,
-      createdAt: db.serverDate()
+      content: comment.content
     })
+    await c.save()
 
     // 原子更新帖子评论数
-    await db.collection('posts').doc(postId).update({
-      commentCount: _.inc(1)
-    })
+    const postObj = AV.Object.createWithoutData('Posts', postId)
+    postObj.increment('commentCount', 1)
+    await postObj.save()
 
     // 乐观更新内存中的 comment_count
     const memPost = posts.value.find(p => p.id === postId)
@@ -292,6 +289,16 @@ export const useSquareStore = defineStore('square', () => {
     help: '求助', idle: '闲置', chat: '交流',
     hospital: '医院便民', policy: '政策解读', anti_fraud: '防诈骗',
     general: '互助交流'
+  }
+
+  /** AV.Object → 普通对象 */
+  function avToPlain(obj) {
+    return {
+      _id: obj.id,
+      ...obj.attributes,
+      createdAt: obj.get('createdAt') ? obj.get('createdAt').toISOString() : new Date().toISOString(),
+      updatedAt: obj.get('updatedAt') ? obj.get('updatedAt').toISOString() : new Date().toISOString()
+    }
   }
 
   function formatPost(item) {

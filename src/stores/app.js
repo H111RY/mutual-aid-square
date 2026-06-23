@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem, removeItem } from '@/storage/core'
-import { db, getUserId, initAuth } from '@/cloudbase'
+import { getUserId, initAuth, AV } from '@/leancloud'
 
 /**
  * 全局应用状态 — UI 层共享状态
@@ -30,24 +30,23 @@ export const useAppStore = defineStore('app', () => {
 
   /**
    * 应用启动时自动初始化：
-   * 1. CloudBase 匿名登录（或本地后备 UID）
+   * 1. LeanCloud 匿名登录（失败则本地后备 UID）
    * 2. 查询用户资料
    */
   async function restoreSession() {
     const uid = await initAuth()
-
     setUser({ id: uid })
 
-    // 尝试从数据库加载已有资料
     try {
-      const { data } = await db.collection('users').where({ uid }).get()
-      if (data.length > 0) {
-        const profile = data[0]
+      const query = new AV.Query('users')
+      query.equalTo('uid', uid)
+      const profile = await query.first()
+      if (profile) {
         setUser({
           id: uid,
-          nickname: profile.nickname || '',
-          avatar: profile.avatar || '',
-          building: profile.building || ''
+          nickname: profile.get('nickname') || '',
+          avatar: profile.get('avatar') || '',
+          building: profile.get('building') || ''
         })
       }
     } catch {

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem } from '@/storage/core'
 import { useAppStore } from '@/stores/app'
-import { getUserId, db } from '@/cloudbase'
+import { getUserId, AV } from '@/leancloud'
 
 /**
  * 用户个人中心状态
@@ -53,7 +53,8 @@ export const useUserStore = defineStore('user', () => {
   async function removeMyPost(id) {
     myPosts.value = myPosts.value.filter(p => p.id !== id)
     try {
-      await db.collection('posts').doc(id).remove()
+      const obj = AV.Object.createWithoutData('Posts', id)
+      await obj.destroy()
     } catch {
       loadMyPosts()
     }
@@ -64,11 +65,11 @@ export const useUserStore = defineStore('user', () => {
     if (idx !== -1) myPosts.value[idx] = { ...myPosts.value[idx], ...data }
 
     try {
-      const updateData = {}
-      if (data.content) updateData.content = data.content
-      if (data.category) updateData.category = data.category
-      if (data.images) updateData.images = data.images
-      await db.collection('posts').doc(id).update(updateData)
+      const obj = AV.Object.createWithoutData('Posts', id)
+      if (data.content) obj.set('content', data.content)
+      if (data.category) obj.set('category', data.category)
+      if (data.images) obj.set('images', data.images)
+      await obj.save()
     } catch {
       loadMyPosts()
     }
@@ -84,23 +85,23 @@ export const useUserStore = defineStore('user', () => {
 
     myPostsLoading.value = true
     try {
-      const { data } = await db.collection('posts')
-        .where({ authorId: uid })
-        .orderBy('createdAt', 'desc')
-        .get()
+      const query = new AV.Query('Posts')
+      query.equalTo('authorId', uid)
+      query.descending('createdAt')
+      const data = await query.find()
 
       myPosts.value = data.map(p => ({
-        id: p._id,
-        objectId: p._id,
-        category: p.category,
-        content: p.content,
-        images: p.images || [],
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-        likeCount: p.likeCount || 0,
-        commentCount: p.commentCount || 0,
-        isTop: p.isTop || false,
-        status: p.status || 'unreplied'
+        id: p.id,
+        objectId: p.id,
+        category: p.get('category'),
+        content: p.get('content'),
+        images: p.get('images') || [],
+        createdAt: p.get('createdAt'),
+        updatedAt: p.get('updatedAt'),
+        likeCount: p.get('likeCount') || 0,
+        commentCount: p.get('commentCount') || 0,
+        isTop: p.get('isTop') || false,
+        status: p.get('status') || 'unreplied'
       }))
       stats.value.total_posts = myPosts.value.length
       stats.value.resolved_posts = myPosts.value.filter(p => p.status === 'resolved').length

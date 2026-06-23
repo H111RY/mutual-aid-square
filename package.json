@@ -10,7 +10,7 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@cloudbase/js-sdk": "^3.5.1",
+    "leancloud-storage": "^4.15.0",
     "axios": "^1.7.0",
     "compressorjs": "^1.2.0",
     "express": "^5.2.1",
