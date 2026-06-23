@@ -6,11 +6,11 @@ let _initialized = false
 function ensureInit() {
   if (_initialized) return
 
-  AV.init({
-    appId: import.meta.env.VITE_LEANCLOUD_APP_ID,
-    appKey: import.meta.env.VITE_LEANCLOUD_APP_KEY,
-    serverURL: import.meta.env.VITE_LEANCLOUD_SERVER_URL
-  })
+  const appId = import.meta.env.VITE_LEANCLOUD_APP_ID || 'Kf9fWu0MZf9h5qKtVamqqJo3-gzGzoHsz'
+  const appKey = import.meta.env.VITE_LEANCLOUD_APP_KEY || 'mBJeuVSCbNkZcrfQCqodJwXr'
+  const serverURL = import.meta.env.VITE_LEANCLOUD_SERVER_URL || 'https://kf9fwu0m.lc-cn-n1-shared.com'
+
+  AV.init({ appId, appKey, serverURL })
   _initialized = true
 }
 
