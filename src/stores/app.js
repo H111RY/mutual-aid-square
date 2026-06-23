@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getItem, setItem } from '@/storage/core'
-import { auth, db } from '@/cloudbase'
+import { getItem, setItem, removeItem } from '@/storage/core'
+import { db, getUserId, setCurrentPhone, clearCurrentPhone, ensureAuth } from '@/cloudbase'
 
 /**
  * 全局应用状态 — UI 层共享状态
@@ -28,12 +28,19 @@ export const useAppStore = defineStore('app', () => {
     user.value = { id: '', nickname: '', avatar: '', building: '', role: 'resident' }
   }
 
-  async function login(phone, code, verificationInfo) {
+  async function login(phone, code) {
     const { signInWithSms } = await import('@/api/auth')
 
-    const res = await signInWithSms(phone, code, verificationInfo)
-    const uid = res.user.uid
+    // 1. 确保有 CloudBase 匿名登录会话
+    await ensureAuth()
 
+    // 2. 测试模式验证码校验
+    const { uid } = await signInWithSms(phone, code)
+
+    // 3. 持久化手机号（会话级别）
+    setCurrentPhone(phone)
+
+    // 4. 查询是否有已有资料
     const { data } = await db.collection('users').where({ uid }).get()
 
     if (data.length > 0) {
@@ -52,15 +59,17 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function logout() {
-    await auth.signOut()
+    clearCurrentPhone()
     clearUser()
   }
 
   async function restoreSession() {
-    const loginState = await auth.getLoginState()
-    if (!loginState) return false
+    const uid = getUserId()
+    if (!uid) return false
 
-    const uid = loginState.user.uid
+    // 确保 CloudBase 匿名会话有效
+    await ensureAuth()
+
     const { data } = await db.collection('users').where({ uid }).get()
 
     if (data.length > 0) {
@@ -74,7 +83,7 @@ export const useAppStore = defineStore('app', () => {
       return true
     }
 
-    // 已登录但无资料（异常情况，让用户重新登录）
+    // 有手机号但无资料（异常情况）
     return false
   }
 

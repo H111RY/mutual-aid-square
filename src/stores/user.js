@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem } from '@/storage/core'
 import { useAppStore } from '@/stores/app'
-import { auth, db } from '@/cloudbase'
+import { getUserId, db } from '@/cloudbase'
 
 /**
  * 用户个人中心状态
@@ -79,13 +79,13 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function loadMyPosts() {
-    const loginState = await auth.getLoginState()
-    if (!loginState) return
+    const uid = getUserId()
+    if (!uid) return
 
     myPostsLoading.value = true
     try {
       const { data } = await db.collection('posts')
-        .where({ authorId: loginState.user.uid })
+        .where({ authorId: uid })
         .orderBy('createdAt', 'desc')
         .get()
 

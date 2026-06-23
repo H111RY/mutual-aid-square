@@ -1,4 +1,5 @@
 import cloudbase from '@cloudbase/js-sdk'
+import { getItem, setItem, removeItem } from '@/storage/core'
 
 let _app = null
 let _auth = null
@@ -28,6 +29,72 @@ function ensureInit() {
   }
 }
 
+/* ==================================================================
+   ── 匿名登录（为数据库操作提供 CloudBase 会话）──
+   ================================================================== */
+let _authPromise = null
+
+async function ensureAuth() {
+  ensureInit()
+  if (_auth.hasLoginState()) return
+  if (_authPromise) return _authPromise
+
+  _authPromise = _auth.signInAnonymously().then(() => {
+    _authPromise = null
+  }).catch(err => {
+    _authPromise = null
+    throw err
+  })
+
+  return _authPromise
+}
+
+/* ==================================================================
+   ── 测试模式用户身份（手机号 → uid）──
+   ================================================================== */
+export function getUserId() {
+  const phone = getItem('login_phone', 'session')
+  return phone ? 'phone_' + phone : null
+}
+
+export function setCurrentPhone(phone) {
+  setItem('login_phone', phone, 'session')
+}
+
+export function clearCurrentPhone() {
+  removeItem('login_phone', 'session')
+}
+
+export async function requireUserId() {
+  await ensureAuth()
+  const uid = getUserId()
+  if (!uid) throw new Error('请先登录')
+  return uid
+}
+
+/* ==================================================================
+   ── 公开接口 ──
+   ================================================================== */
+export function isLoggedIn() {
+  try {
+    return !!getItem('login_phone', 'session')
+  } catch {
+    return false
+  }
+}
+
+export async function getCurrentUser() {
+  try {
+    await ensureAuth()
+    return getUserId() ? { uid: getUserId() } : null
+  } catch {
+    return null
+  }
+}
+
+/* ==================================================================
+   ── Proxy 导出（惰性初始化）──
+   ================================================================== */
 export const app = new Proxy({}, {
   get(_, prop) { ensureInit(); return _app[prop] }
 })
@@ -40,25 +107,6 @@ export const db = new Proxy({}, {
   get(_, prop) { ensureInit(); return _db[prop].bind(_db) }
 })
 
-export { _ }
-
-export function isLoggedIn() {
-  try {
-    ensureInit()
-    return _auth.hasLoginState()
-  } catch {
-    return false
-  }
-}
-
-export async function getCurrentUser() {
-  try {
-    ensureInit()
-    const state = await _auth.getLoginState()
-    return state?.user || null
-  } catch {
-    return null
-  }
-}
+export { _, ensureAuth }
 
 export default app

@@ -85,7 +85,6 @@ const code = ref('')
 const isLoggingIn = ref(false)
 const error = ref('')
 const countdown = ref(0)
-let verificationInfo = null
 let countdownTimer = null
 
 const canSend = computed(() => phone.value.length === 11 && !isLoggingIn.value)
@@ -102,8 +101,8 @@ async function sendCode() {
   if (!canSend.value) return
   error.value = ''
   try {
-    const res = await sendSmsCode(phone.value)
-    verificationInfo = res.verificationInfo
+    await sendSmsCode(phone.value)
+    app.showToast('验证码已发送（测试环境：123456）', 'info')
     countdown.value = 60
     countdownTimer = setInterval(() => {
       countdown.value--
@@ -119,14 +118,10 @@ async function sendCode() {
 
 async function handleLogin() {
   if (!canLogin.value) return
-  if (!verificationInfo) {
-    error.value = '请先获取验证码'
-    return
-  }
   error.value = ''
   isLoggingIn.value = true
   try {
-    const res = await app.login(phone.value, code.value, verificationInfo)
+    const res = await app.login(phone.value, code.value)
     const redirect = route.query.redirect || '/square'
     if (res.isNewUser) {
       router.replace({ name: 'NicknameSetup', query: { redirect } })

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem } from '@/storage/core'
 import { useAppStore } from '@/stores/app'
-import { auth, db, _ } from '@/cloudbase'
+import { getUserId, db, _ } from '@/cloudbase'
 
 export const useSquareStore = defineStore('square', () => {
   /* ========== 字体模式 ========== */
@@ -72,10 +72,9 @@ export const useSquareStore = defineStore('square', () => {
   /* ── 发布新帖 ── */
   async function addPost(postData) {
     const appStore = useAppStore()
-    const loginState = await auth.getLoginState()
-    if (!loginState) throw new Error('请先登录')
+    const uid = getUserId()
+    if (!uid) throw new Error('请先登录')
 
-    const uid = loginState.user.uid
     const doc = {
       category: postData.category,
       content: postData.content,
@@ -139,13 +138,13 @@ export const useSquareStore = defineStore('square', () => {
 
       // 获取当前用户点赞状态
       let likedPostIds = new Set()
-      const loginState = await auth.getLoginState()
-      if (loginState) {
+      const uid = getUserId()
+      if (uid) {
         const postIds = data.map(d => d._id)
         if (postIds.length > 0) {
           const { data: likesData } = await db.collection('likes')
             .where({
-              userId: loginState.user.uid,
+              userId: uid,
               postId: db.command.in(postIds)
             })
             .get()
@@ -177,14 +176,13 @@ export const useSquareStore = defineStore('square', () => {
     const post = posts.value.find(p => p.id === postId)
     if (!post) return
 
-    const loginState = await auth.getLoginState()
-    if (!loginState) {
+    const uid = getUserId()
+    if (!uid) {
       const appStore = useAppStore()
       appStore.showToast('请先登录', 'error')
       return
     }
 
-    const uid = loginState.user.uid
     const { data: existing } = await db.collection('likes')
       .where({ postId, userId: uid })
       .get()
@@ -224,11 +222,11 @@ export const useSquareStore = defineStore('square', () => {
       .orderBy('createdAt', 'desc')
       .get()
 
-    const loginState = await auth.getLoginState()
+    const uid = getUserId()
     let isLiked = false
-    if (loginState) {
+    if (uid) {
       const { data: likesData } = await db.collection('likes')
-        .where({ postId: id, userId: loginState.user.uid })
+        .where({ postId: id, userId: uid })
         .get()
       isLiked = likesData.length > 0
     }
@@ -251,12 +249,12 @@ export const useSquareStore = defineStore('square', () => {
   /** 添加评论到帖子 */
   async function addComment(postId, comment) {
     const appStore = useAppStore()
-    const loginState = await auth.getLoginState()
-    if (!loginState) throw new Error('请先登录')
+    const uid = getUserId()
+    if (!uid) throw new Error('请先登录')
 
     await db.collection('comments').add({
       postId,
-      authorId: loginState.user.uid,
+      authorId: uid,
       authorNickname: appStore.user.nickname || '新用户',
       authorAvatar: appStore.user.avatar || '',
       content: comment.content,
