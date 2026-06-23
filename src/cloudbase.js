@@ -43,6 +43,10 @@ async function ensureAuth() {
     _authPromise = null
   }).catch(err => {
     _authPromise = null
+    const msg = err.message || err.toString()
+    if (msg.includes('network') || msg.includes('Network') || msg.includes('fetch')) {
+      throw new Error('网络请求失败，请确认已在 CloudBase 控制台 → 安全配置 → 添加安全域名：' + window.location.origin)
+    }
     throw err
   })
 
