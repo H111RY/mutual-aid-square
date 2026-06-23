@@ -1,7 +1,7 @@
 <template>
   <div class="page-container">
     <router-view v-slot="{ Component, route }">
-      <template v-if="route.name === 'Login'">
+      <template v-if="route.name === 'Login' || route.name === 'NicknameSetup'">
         <component :is="Component" />
       </template>
       <template v-else>

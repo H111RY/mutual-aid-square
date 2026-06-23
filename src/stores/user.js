@@ -1,10 +1,11 @@
-import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import { getItem, setItem } from '@/storage/core';
-import { useAppStore } from '@/stores/app';
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { getItem, setItem } from '@/storage/core'
+import { useAppStore } from '@/stores/app'
+import { auth, db } from '@/cloudbase'
 
 /**
- * 用户个人中心状态 — 我的发布、消息设置、楼栋、偏好、反馈
+ * 用户个人中心状态
  */
 export const useUserStore = defineStore('user', () => {
   /* ==================================================================
@@ -15,20 +16,20 @@ export const useUserStore = defineStore('user', () => {
     resolved_posts: 0,
     favorited_posts: 0,
     total_feedback: 0
-  });
+  })
 
   function setStats(data) {
-    stats.value = { ...stats.value, ...data };
+    stats.value = { ...stats.value, ...data }
   }
 
   /* ==================================================================
      ── 我的发布 ──
      ================================================================== */
-  const myPosts = ref([]);
-  const myPostsLoading = ref(false);
-  const myPostsPage = ref(1);
-  const myPostsIsEnd = ref(false);
-  const myPostsFilter = ref('all'); // all | help | idle | chat | hospital | policy | anti_fraud
+  const myPosts = ref([])
+  const myPostsLoading = ref(false)
+  const myPostsPage = ref(1)
+  const myPostsIsEnd = ref(false)
+  const myPostsFilter = ref('all')
 
   const postCategories = [
     { name: '全部', value: 'all' },
@@ -38,47 +39,76 @@ export const useUserStore = defineStore('user', () => {
     { name: '医院便民', value: 'hospital' },
     { name: '政策解读', value: 'policy' },
     { name: '防诈骗', value: 'anti_fraud' }
-  ];
+  ]
 
   const filteredMyPosts = computed(() => {
-    if (myPostsFilter.value === 'all') return myPosts.value;
-    return myPosts.value.filter(p => p.category === myPostsFilter.value);
-  });
+    if (myPostsFilter.value === 'all') return myPosts.value
+    return myPosts.value.filter(p => p.category === myPostsFilter.value)
+  })
 
   function setMyPosts(list, reset = false) {
-    myPosts.value = reset ? list : [...myPosts.value, ...list];
+    myPosts.value = reset ? list : [...myPosts.value, ...list]
   }
 
-  function removeMyPost(id) {
-    myPosts.value = myPosts.value.filter(p => p.id !== id);
-    const allPosts = getItem('posts') || [];
-    setItem('posts', allPosts.filter(p => p.id !== id));
+  async function removeMyPost(id) {
+    myPosts.value = myPosts.value.filter(p => p.id !== id)
+    try {
+      await db.collection('posts').doc(id).remove()
+    } catch {
+      loadMyPosts()
+    }
   }
 
-  function updateMyPost(id, data) {
-    const idx = myPosts.value.findIndex(p => p.id === id);
-    if (idx !== -1) myPosts.value[idx] = { ...myPosts.value[idx], ...data };
-    const allPosts = getItem('posts') || [];
-    const pIdx = allPosts.findIndex(p => p.id === id);
-    if (pIdx !== -1) {
-      allPosts[pIdx] = { ...allPosts[pIdx], ...data };
-      setItem('posts', allPosts);
+  async function updateMyPost(id, data) {
+    const idx = myPosts.value.findIndex(p => p.id === id)
+    if (idx !== -1) myPosts.value[idx] = { ...myPosts.value[idx], ...data }
+
+    try {
+      const updateData = {}
+      if (data.content) updateData.content = data.content
+      if (data.category) updateData.category = data.category
+      if (data.images) updateData.images = data.images
+      await db.collection('posts').doc(id).update(updateData)
+    } catch {
+      loadMyPosts()
     }
   }
 
   function setMyPostsFilter(filter) {
-    myPostsFilter.value = filter;
+    myPostsFilter.value = filter
   }
 
-  function loadMyPosts() {
-    const appStore = useAppStore();
-    const allPosts = getItem('posts') || [];
-    const myNickname = appStore.user.nickname;
-    myPosts.value = allPosts.filter(p =>
-      p.author && p.author.nickname === myNickname
-    );
-    stats.value.total_posts = myPosts.value.length;
-    stats.value.resolved_posts = myPosts.value.filter(p => p.status === 'resolved').length;
+  async function loadMyPosts() {
+    const loginState = await auth.getLoginState()
+    if (!loginState) return
+
+    myPostsLoading.value = true
+    try {
+      const { data } = await db.collection('posts')
+        .where({ authorId: loginState.user.uid })
+        .orderBy('createdAt', 'desc')
+        .get()
+
+      myPosts.value = data.map(p => ({
+        id: p._id,
+        objectId: p._id,
+        category: p.category,
+        content: p.content,
+        images: p.images || [],
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        likeCount: p.likeCount || 0,
+        commentCount: p.commentCount || 0,
+        isTop: p.isTop || false,
+        status: p.status || 'unreplied'
+      }))
+      stats.value.total_posts = myPosts.value.length
+      stats.value.resolved_posts = myPosts.value.filter(p => p.status === 'resolved').length
+    } catch (err) {
+      console.error('[loadMyPosts]', err)
+    } finally {
+      myPostsLoading.value = false
+    }
   }
 
   /* ==================================================================
@@ -88,7 +118,7 @@ export const useUserStore = defineStore('user', () => {
     comment_notify: true,
     like_notify: true,
     reply_notify: true,
-    anti_fraud_push: true,    // 强制开启
+    anti_fraud_push: true,
     anti_fraud_sound: true,
     anti_fraud_volume: 80,
     do_not_disturb: false,
@@ -97,51 +127,51 @@ export const useUserStore = defineStore('user', () => {
     group_digest: false,
     voice_notify: false,
     voice_volume: 60
-  });
+  })
 
   function setNotificationSettings(data) {
-    notificationSettings.value = { ...notificationSettings.value, ...data };
+    notificationSettings.value = { ...notificationSettings.value, ...data }
   }
 
   function toggleNotify(key) {
-    if (key === 'anti_fraud_push') return; // 不可切换
-    notificationSettings.value[key] = !notificationSettings.value[key];
+    if (key === 'anti_fraud_push') return
+    notificationSettings.value[key] = !notificationSettings.value[key]
   }
 
   /* ==================================================================
      ── 楼栋管理 ──
      ================================================================== */
-  const boundBuildings = ref([]);
-  const currentBuildingId = ref('');
-  const MAX_BUILDINGS = 3;
+  const boundBuildings = ref([])
+  const currentBuildingId = ref('')
+  const MAX_BUILDINGS = 3
 
   const currentBuilding = computed(() =>
     boundBuildings.value.find(b => b.is_current) || null
-  );
+  )
 
   const canAddMore = computed(() =>
     boundBuildings.value.length < MAX_BUILDINGS
-  );
+  )
 
   function setBuildings(list) {
-    boundBuildings.value = list;
-    const cur = list.find(b => b.is_current);
-    if (cur) currentBuildingId.value = cur.id;
+    boundBuildings.value = list
+    const cur = list.find(b => b.is_current)
+    if (cur) currentBuildingId.value = cur.id
   }
 
   function addBuilding(building) {
-    boundBuildings.value.push(building);
+    boundBuildings.value.push(building)
   }
 
   function removeBuilding(id) {
-    boundBuildings.value = boundBuildings.value.filter(b => b.id !== id);
+    boundBuildings.value = boundBuildings.value.filter(b => b.id !== id)
   }
 
   function setCurrentBuilding(id) {
     boundBuildings.value.forEach(b => {
-      b.is_current = b.id === id;
-    });
-    currentBuildingId.value = id;
+      b.is_current = b.id === id
+    })
+    currentBuildingId.value = id
   }
 
   /* ==================================================================
@@ -157,27 +187,27 @@ export const useUserStore = defineStore('user', () => {
     long_press_confirm: false,
     haptic_feedback: true,
     show_button_hints: true
-  });
+  })
 
   function setPreferences(data) {
-    preferences.value = { ...preferences.value, ...data };
+    preferences.value = { ...preferences.value, ...data }
   }
 
   function togglePreference(key) {
-    preferences.value[key] = !preferences.value[key];
+    preferences.value[key] = !preferences.value[key]
   }
 
   /* ==================================================================
      ── 反馈 ──
      ================================================================== */
-  const myFeedback = ref([]);
+  const myFeedback = ref([])
 
   function setFeedback(list) {
-    myFeedback.value = list;
+    myFeedback.value = list
   }
 
   function addFeedback(item) {
-    myFeedback.value.unshift(item);
+    myFeedback.value.unshift(item)
   }
 
   /* ==================================================================
@@ -189,7 +219,7 @@ export const useUserStore = defineStore('user', () => {
     { value: 'anti_fraud', name: '防诈预警', icon: '🛡️' },
     { value: 'publish', name: '广场发布', icon: '📝' },
     { value: 'chat', name: '私信群聊', icon: '💬' }
-  ];
+  ]
 
   const guideData = {
     hospital: [
@@ -226,7 +256,7 @@ export const useUserStore = defineStore('user', () => {
       { title: '加入群聊', desc: '完成楼栋选择后，自动加入楼栋专属群聊' },
       { title: '群聊消息设置', desc: '在个人中心 → 消息设置中，可以设置免打扰和汇总推送' }
     ]
-  };
+  }
 
   const faqList = [
     { q: '怎么知道有人回复我了？', a: '消息中心会出现红点提示，点击即可查看回复内容' },
@@ -235,7 +265,7 @@ export const useUserStore = defineStore('user', () => {
     { q: '怎么举报骚扰消息？', a: '在聊天页面右上角点击举报按钮，提交后社区会及时处理' },
     { q: '怎么删除已发布的内容？', a: '进入个人中心 → 我的发布，找到该内容长按或点击删除按钮' },
     { q: '免打扰是什么？', a: '开启后指定时间段内不推送消息通知，保证休息不受打扰' }
-  ];
+  ]
 
   return {
     stats, setStats,
@@ -248,5 +278,5 @@ export const useUserStore = defineStore('user', () => {
     preferences, setPreferences, togglePreference,
     myFeedback, setFeedback, addFeedback,
     guideCategories, guideData, faqList
-  };
-});
+  }
+})

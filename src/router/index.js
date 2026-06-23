@@ -1,16 +1,6 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import { getItem } from '@/storage/core';
+import { createRouter, createWebHistory } from 'vue-router'
+import { isLoggedIn } from '@/cloudbase'
 
-/**
- * 路由配置
- *
- * meta 字段说明：
- *   title           — 页面标题（自动设置 document.title）
- *   keepAlive       — 是否缓存组件（配合 <keep-alive> 使用）
- *   requireAuth     — 是否需要登录（预留）
- *   tab             — 所属底部导航 Tab（预留）
- *   level           — 页面层级 0=首页 1=一级 2=二级（用于过渡方向）
- */
 const routes = [
   {
     path: '/',
@@ -26,7 +16,7 @@ const routes = [
     path: '/square/publish',
     name: 'SquarePublish',
     component: () => import('@/views/square/SquarePublish.vue'),
-    meta: { title: '发布信息', level: 1 }
+    meta: { title: '发布信息', level: 1, requireAuth: true }
   },
   {
     path: '/square/detail/:id',
@@ -35,14 +25,12 @@ const routes = [
     meta: { title: '帖子详情', level: 1 }
   },
 
-  // ── 沟通广场（沟通中心模块首页，与互助广场平级）──
   {
     path: '/communicate',
     name: 'CommunicationHome',
     component: () => import('@/views/chat/CommunicationHome.vue'),
     meta: { title: '沟通广场', keepAlive: true, level: 0 }
   },
-  // ── 消息中心（沟通中心模块）──
   {
     path: '/messages',
     name: 'Messages',
@@ -74,7 +62,6 @@ const routes = [
     meta: { title: '群聊', level: 1 }
   },
 
-  // ── 个人中心 ──
   {
     path: '/profile',
     name: 'ProfileHome',
@@ -124,7 +111,6 @@ const routes = [
     meta: { title: '意见反馈', level: 1 }
   },
 
-  // ── 演示页面 ──
   {
     path: '/demo/voice',
     name: 'VoiceDemo',
@@ -186,7 +172,6 @@ const routes = [
     meta: { title: '图片处理演示', level: 2 }
   },
 
-  // ── 登录 ──
   {
     path: '/login',
     name: 'Login',
@@ -194,83 +179,83 @@ const routes = [
     meta: { title: '登录', level: 99 }
   },
 
-  // ── 404 兜底（必须在最后）──
+  {
+    path: '/nickname-setup',
+    name: 'NicknameSetup',
+    component: () => import('@/views/auth/NicknameSetup.vue'),
+    meta: { title: '设置昵称', level: 99 }
+  },
+
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/square/NotFound.vue'),
     meta: { title: '页面未找到', level: 99 }
   }
-];
+]
 
 const router = createRouter({
   history: createWebHistory(),
   routes,
 
   scrollBehavior(to, from, savedPosition) {
-    if (savedPosition) {
-      return savedPosition;                 // 浏览器前进/后退：恢复位置
-    }
-    if (to.hash) {
-      return { el: to.hash, behavior: 'smooth' };  // 锚点定位
-    }
-    return { top: 0 };                      // 新页面：滚动到顶部
+    if (savedPosition) return savedPosition
+    if (to.hash) return { el: to.hash, behavior: 'smooth' }
+    return { top: 0 }
   }
-});
+})
 
 /* ==================================================================
    ── 全局前置守卫 ──
    ================================================================== */
 
 function checkAuth() {
-  return !!getItem('token', 'session');
+  return isLoggedIn()
 }
 
+const PUBLIC_ROUTES = ['Login', 'NicknameSetup', 'NotFound']
+
 router.beforeEach((to, from, next) => {
-  // 0. 登录鉴权
-  const isLoggedIn = checkAuth();
-  if (to.name !== 'Login' && !isLoggedIn) {
-    return next({ name: 'Login', query: { redirect: to.fullPath } });
-  }
-  if (to.name === 'Login' && isLoggedIn) {
-    return next({ path: to.query.redirect || '/square' });
+  const loggedIn = checkAuth()
+
+  if (!PUBLIC_ROUTES.includes(to.name) && !loggedIn) {
+    return next({ name: 'Login', query: { redirect: to.fullPath } })
   }
 
-  // 1. 记录页面过渡方向
-  const toLevel = to.meta.level ?? 0;
-  const fromLevel = from.meta.level ?? 0;
+  if (to.name === 'Login' && loggedIn) {
+    return next({ path: to.query.redirect || '/square' })
+  }
+
+  const toLevel = to.meta.level ?? 0
+  const fromLevel = from.meta.level ?? 0
 
   if (!from.name) {
-    to.meta.direction = 'forward';
+    to.meta.direction = 'forward'
   } else if (toLevel > fromLevel) {
-    to.meta.direction = 'forward';
+    to.meta.direction = 'forward'
   } else if (toLevel < fromLevel) {
-    to.meta.direction = 'back';
+    to.meta.direction = 'back'
   } else {
-    // 同级默认 forward，除非目标路径更短（返回）
-    to.meta.direction = to.path.length < from.path.length ? 'back' : 'forward';
+    to.meta.direction = to.path.length < from.path.length ? 'back' : 'forward'
   }
 
-  // 2. 设置页面标题
-  document.title = (to.meta.title || '互助广场') + ' - 社区互助平台';
+  document.title = (to.meta.title || '互助广场') + ' - 社区互助平台'
 
-  next();
-});
+  next()
+})
 
 /* ==================================================================
    ── 全局后置钩子 ──
    ================================================================== */
 
 router.afterEach((to) => {
-  // 页面跟踪（可接入统计）
   if (typeof window !== 'undefined' && to.name) {
     // e.g. gtag('event', 'page_view', { page_path: to.fullPath })
   }
-});
+})
 
-export default router;
+export default router
 
-/** 获取所有非隐藏路由列表（供演示/调试用） */
 export function getRouteList() {
   return routes
     .filter(r => r.name && !r.path.startsWith('/:'))
@@ -281,5 +266,5 @@ export function getRouteList() {
       level: r.meta?.level ?? 0,
       keepAlive: r.meta?.keepAlive || false,
       requireAuth: r.meta?.requireAuth || false
-    }));
+    }))
 }

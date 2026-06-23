@@ -14,7 +14,9 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Env files (keep .env.example if needed)
+# Env files
+.env
+.env.production
 .env.local
 .env.*.local
 

@@ -1,47 +1,66 @@
-import http from './http';
-
-const USE_MOCK = true;
+import { auth, db } from '@/cloudbase'
 
 /**
  * 发送短信验证码
- * @param {string} phone 手机号
- * @returns {Promise<{ success: boolean }>}
+ * @param {string} phone 手机号（不加 +86 前缀）
+ * @returns {Promise<{ verificationInfo: object }>}
  */
-export function sendSmsCode(phone) {
-  if (USE_MOCK) {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve({ success: true }), 500);
-    });
-  }
-  return http.post('/auth/sms-code', { phone });
+export async function sendSmsCode(phone) {
+  const phoneNumber = '+86 ' + phone
+  const verificationInfo = await auth.getVerification({ phone_number: phoneNumber })
+  return { success: true, verificationInfo }
 }
 
 /**
- * 手机号 + 验证码登录
+ * 短信验证码登录（自动注册新用户）
  * @param {string} phone 手机号
- * @param {string} code  6 位验证码
- * @returns {Promise<{ token: string, user: object }>}
+ * @param {string} code 验证码
+ * @param {object} verificationInfo 从 sendSmsCode 获取
+ * @returns {Promise<{ user: object }>}
  */
-export function loginByPhone(phone, code) {
-  if (USE_MOCK) {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (code === '123456') {
-          resolve({
-            token: 'mock_token_' + Date.now(),
-            user: {
-              id: 'u_001',
-              nickname: '邻里用户',
-              avatar: '',
-              building: '1号楼',
-              role: 'resident'
-            }
-          });
-        } else {
-          reject({ message: '验证码错误' });
-        }
-      }, 800);
-    });
+export async function signInWithSms(phone, code, verificationInfo) {
+  const phoneNumber = '+86 ' + phone
+  const loginState = await auth.signInWithSms({
+    verificationInfo,
+    verificationCode: code,
+    phoneNum: phoneNumber
+  })
+  return { user: loginState.user }
+}
+
+/**
+ * 获取当前登录用户资料
+ * @returns {Promise<object|null>}
+ */
+export async function fetchProfile(uid) {
+  const { data } = await db.collection('users').where({ uid }).get()
+  if (data.length === 0) return null
+  const doc = data[0]
+  return {
+    id: uid,
+    nickname: doc.nickname || '',
+    avatar: doc.avatar || '',
+    building: doc.building || '',
+    phone: doc.phone || ''
   }
-  return http.post('/auth/login/phone', { phone, code });
+}
+
+/**
+ * 更新/创建用户资料
+ * @param {object} data - { nickname, building, avatar, phone }
+ */
+export async function updateProfile(data) {
+  const loginState = await auth.getLoginState()
+  if (!loginState) throw new Error('未登录')
+
+  const uid = loginState.user.uid
+  const { data: docs } = await db.collection('users').where({ uid }).get()
+
+  if (docs.length > 0) {
+    await db.collection('users').doc(docs[0]._id).update(data)
+  } else {
+    await db.collection('users').add({ uid, phone: '', nickname: '', avatar: '', building: '', ...data })
+  }
+
+  return { success: true }
 }

@@ -31,10 +31,10 @@
         <div v-if="showComments" class="comment-list">
           <BaseEmpty v-if="comments.length === 0" icon="💬" desc="暂无评论，来第一个留言吧～" />
           <div v-for="c in comments" :key="c.id" class="comment-item">
-            <BaseAvatar :src="c.author.avatar" :name="c.author.nickname" size="sm" />
+            <BaseAvatar :src="c.author?.avatar" :name="c.author?.nickname" size="sm" />
             <div class="comment-body">
               <div class="comment-meta">
-                <span class="comment-nickname">{{ c.author.nickname }}</span>
+                <span class="comment-nickname">{{ c.author?.nickname || '新用户' }}</span>
                 <span class="comment-time">{{ c.timeAgo || '刚刚' }}</span>
               </div>
               <p class="comment-content">{{ c.content }}</p>
@@ -68,67 +68,83 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { useSquareStore } from '@/stores/square';
-import { useVoiceInput } from '@/composables/useVoiceInput';
-import PostCard from './components/PostCard.vue';
-import BaseButton from '@/components/ui/BaseButton.vue';
-import BaseAvatar from '@/components/ui/BaseAvatar.vue';
-import BaseEmpty from '@/components/ui/BaseEmpty.vue';
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useSquareStore } from '@/stores/square'
+import { useAppStore } from '@/stores/app'
+import { useVoiceInput } from '@/composables/useVoiceInput'
+import PostCard from './components/PostCard.vue'
+import BaseButton from '@/components/ui/BaseButton.vue'
+import BaseAvatar from '@/components/ui/BaseAvatar.vue'
+import BaseEmpty from '@/components/ui/BaseEmpty.vue'
 
-const route = useRoute();
-const store = useSquareStore();
+const route = useRoute()
+const store = useSquareStore()
+const appStore = useAppStore()
 
-const post = ref(null);
-const comments = ref([]);
-const commentText = ref('');
-const showComments = ref(true);
-const loading = ref(true);
-const commentRef = ref(null);
+const post = ref(null)
+const comments = ref([])
+const commentText = ref('')
+const showComments = ref(true)
+const loading = ref(true)
+const commentRef = ref(null)
 
 const {
   status: voiceStatus,
   toggle: toggleVoiceComment
 } = useVoiceInput({
-  onResult: (fullText) => { commentText.value = fullText; }
-});
-const voiceSupported = computed(() => voiceStatus.value !== 'unsupported');
+  onResult: (fullText) => { commentText.value = fullText }
+})
+const voiceSupported = computed(() => voiceStatus.value !== 'unsupported')
 
 const timeAgo = (dateStr) => {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (diff < 60) return '刚刚';
-  if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
-  if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
-  return Math.floor(diff / 86400) + '天前';
-};
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return Math.floor(diff / 60) + '分钟前'
+  if (diff < 86400) return Math.floor(diff / 3600) + '小时前'
+  return Math.floor(diff / 86400) + '天前'
+}
 
-onMounted(() => {
-  const postData = store.getPostById(route.params.id);
+onMounted(async () => {
+  const postData = await store.getPostById(route.params.id)
   if (postData) {
-    post.value = postData;
-    comments.value = (postData.comments || []).map(c => ({ ...c, timeAgo: timeAgo(c.created_at) }));
+    post.value = postData
+    comments.value = (postData.comments || []).map(c => ({
+      ...c,
+      timeAgo: timeAgo(c.created_at)
+    }))
   }
-  loading.value = false;
+  loading.value = false
 
   if (route.query.scrollTo === 'comment') {
-    setTimeout(() => commentRef.value?.scrollIntoView({ behavior: 'smooth' }), 100);
+    setTimeout(() => commentRef.value?.scrollIntoView({ behavior: 'smooth' }), 100)
   }
-});
+})
 
-function submitComment() {
-  if (!commentText.value.trim()) return;
-  const content = commentText.value;
-  commentText.value = '';
-  const c = {
-    id: 'c_' + Date.now(),
+async function submitComment() {
+  if (!commentText.value.trim() || !appStore.isLoggedIn) return
+  const content = commentText.value.trim()
+  commentText.value = ''
+
+  const tempId = 'c_' + Date.now()
+
+  // 乐观插入本地列表
+  comments.value.unshift({
+    id: tempId,
     content,
-    author: { nickname: '我', avatar: '' },
-    created_at: new Date().toISOString(),
+    author: {
+      nickname: appStore.user.nickname || '新用户',
+      avatar: appStore.user.avatar || ''
+    },
     timeAgo: '刚刚'
-  };
-  comments.value.unshift(c);
-  store.addComment(route.params.id, c);
+  })
+
+  try {
+    await store.addComment(route.params.id, { content })
+  } catch (e) {
+    comments.value = comments.value.filter(co => co.id !== tempId)
+    appStore.showToast(e.message || '评论失败', 'error')
+  }
 }
 </script>
 
