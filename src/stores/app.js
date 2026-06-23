@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem, removeItem } from '@/storage/core'
-import { db, getUserId, setCurrentPhone, clearCurrentPhone, ensureAuth } from '@/cloudbase'
+import { db, getUserId, initAuth } from '@/cloudbase'
 
 /**
  * 全局应用状态 — UI 层共享状态
@@ -18,7 +18,7 @@ export const useAppStore = defineStore('app', () => {
     role: 'resident'
   })
 
-  const isLoggedIn = computed(() => !!user.value.id)
+  const isLoggedIn = computed(() => true)
 
   function setUser(info) {
     user.value = { ...user.value, ...info }
@@ -28,63 +28,31 @@ export const useAppStore = defineStore('app', () => {
     user.value = { id: '', nickname: '', avatar: '', building: '', role: 'resident' }
   }
 
-  async function login(phone, code) {
-    const { signInWithSms } = await import('@/api/auth')
-
-    // 1. 确保有 CloudBase 匿名登录会话
-    await ensureAuth()
-
-    // 2. 测试模式验证码校验
-    const { uid } = await signInWithSms(phone, code)
-
-    // 3. 持久化手机号（会话级别）
-    setCurrentPhone(phone)
-
-    // 4. 查询是否有已有资料
-    const { data } = await db.collection('users').where({ uid }).get()
-
-    if (data.length > 0) {
-      const profile = data[0]
-      setUser({
-        id: uid,
-        nickname: profile.nickname || '',
-        avatar: profile.avatar || '',
-        building: profile.building || ''
-      })
-      return { isNewUser: false }
-    }
+  /**
+   * 应用启动时自动初始化：
+   * 1. CloudBase 匿名登录（或本地后备 UID）
+   * 2. 查询用户资料
+   */
+  async function restoreSession() {
+    const uid = await initAuth()
 
     setUser({ id: uid })
-    return { isNewUser: true }
-  }
 
-  async function logout() {
-    clearCurrentPhone()
-    clearUser()
-  }
-
-  async function restoreSession() {
-    const uid = getUserId()
-    if (!uid) return false
-
-    // 确保 CloudBase 匿名会话有效
-    await ensureAuth()
-
-    const { data } = await db.collection('users').where({ uid }).get()
-
-    if (data.length > 0) {
-      const profile = data[0]
-      setUser({
-        id: uid,
-        nickname: profile.nickname || '',
-        avatar: profile.avatar || '',
-        building: profile.building || ''
-      })
-      return true
+    // 尝试从数据库加载已有资料
+    try {
+      const { data } = await db.collection('users').where({ uid }).get()
+      if (data.length > 0) {
+        const profile = data[0]
+        setUser({
+          id: uid,
+          nickname: profile.nickname || '',
+          avatar: profile.avatar || '',
+          building: profile.building || ''
+        })
+      }
+    } catch {
+      // 数据库不可用时使用空资料
     }
-
-    // 有手机号但无资料（异常情况）
-    return false
   }
 
   /* ==================================================================
@@ -176,7 +144,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   return {
-    user, isLoggedIn, setUser, clearUser, login, logout, restoreSession,
+    user, isLoggedIn, setUser, clearUser, restoreSession,
     toasts, showToast, removeToast,
     isGlobalLoading, startLoading, stopLoading,
     isOnline, initNetworkListener,

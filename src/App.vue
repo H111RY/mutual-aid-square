@@ -1,16 +1,11 @@
 <template>
   <div class="page-container">
     <router-view v-slot="{ Component, route }">
-      <template v-if="route.name === 'Login' || route.name === 'NicknameSetup'">
-        <component :is="Component" />
-      </template>
-      <template v-else>
-        <transition :name="'page-' + (route.meta.direction || 'forward')" mode="out-in">
-          <keep-alive :include="keepAliveList">
-            <component :is="Component" :key="route.meta.keepAlive ? undefined : route.fullPath" />
-          </keep-alive>
-        </transition>
-      </template>
+      <transition :name="'page-' + (route.meta.direction || 'forward')" mode="out-in">
+        <keep-alive :include="keepAliveList">
+          <component :is="Component" :key="route.meta.keepAlive ? undefined : route.fullPath" />
+        </keep-alive>
+      </transition>
     </router-view>
   </div>
 
@@ -20,14 +15,13 @@
 
 <script setup>
 import { computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { useSquareStore } from '@/stores/square';
 import { useAppStore } from '@/stores/app';
 import { getRouteList } from '@/router';
 import BottomTabNav from '@/components/layout/BottomTabNav.vue';
 
 const route = useRoute();
-const router = useRouter();
 const square = useSquareStore();
 const app = useAppStore();
 
@@ -47,11 +41,7 @@ const keepAliveList = computed(() => {
 onMounted(() => {
   square.initFontMode();
   app.init();
-  app.restoreSession();
-
-  window.addEventListener('auth:expired', () => {
-    router.push({ name: 'Login', query: { redirect: route.fullPath } });
-  });
+  app.restoreSession();  // 自动匿名登录 → 直接进入首页
 });
 </script>
 

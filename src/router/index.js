@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { isLoggedIn } from '@/cloudbase'
 
 const routes = [
   {
@@ -173,20 +172,6 @@ const routes = [
   },
 
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/auth/LoginPage.vue'),
-    meta: { title: '登录', level: 99 }
-  },
-
-  {
-    path: '/nickname-setup',
-    name: 'NicknameSetup',
-    component: () => import('@/views/auth/NicknameSetup.vue'),
-    meta: { title: '设置昵称', level: 99 }
-  },
-
-  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/square/NotFound.vue'),
@@ -206,26 +191,10 @@ const router = createRouter({
 })
 
 /* ==================================================================
-   ── 全局前置守卫 ──
+   ── 全局前置守卫（匿名访问 — 无需登录）──
    ================================================================== */
 
-function checkAuth() {
-  return isLoggedIn()
-}
-
-const PUBLIC_ROUTES = ['Login', 'NicknameSetup', 'NotFound']
-
 router.beforeEach((to, from, next) => {
-  const loggedIn = checkAuth()
-
-  if (!PUBLIC_ROUTES.includes(to.name) && !loggedIn) {
-    return next({ name: 'Login', query: { redirect: to.fullPath } })
-  }
-
-  if (to.name === 'Login' && loggedIn) {
-    return next({ path: to.query.redirect || '/square' })
-  }
-
   const toLevel = to.meta.level ?? 0
   const fromLevel = from.meta.level ?? 0
 
@@ -242,16 +211,6 @@ router.beforeEach((to, from, next) => {
   document.title = (to.meta.title || '互助广场') + ' - 社区互助平台'
 
   next()
-})
-
-/* ==================================================================
-   ── 全局后置钩子 ──
-   ================================================================== */
-
-router.afterEach((to) => {
-  if (typeof window !== 'undefined' && to.name) {
-    // e.g. gtag('event', 'page_view', { page_path: to.fullPath })
-  }
 })
 
 export default router

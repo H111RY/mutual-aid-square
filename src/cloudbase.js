@@ -1,11 +1,13 @@
 import cloudbase from '@cloudbase/js-sdk'
-import { getItem, setItem, removeItem } from '@/storage/core'
+import { getItem, setItem } from '@/storage/core'
 
 let _app = null
 let _auth = null
 let _db = null
 let _ = null
+let _userId = null
 let _initError = null
+let _authPromise = null
 
 function ensureInit() {
   if (_app) return
@@ -30,10 +32,50 @@ function ensureInit() {
 }
 
 /* ==================================================================
-   ── 匿名登录（为数据库操作提供 CloudBase 会话）──
+   ── 本地后备 UID（CloudBase 不可用时使用）──
    ================================================================== */
-let _authPromise = null
+function ensureLocalUid() {
+  if (_userId) return
+  _userId = getItem('local_uid', 'local')
+  if (!_userId) {
+    _userId = 'local_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+    setItem('local_uid', _userId, 'local')
+  }
+}
 
+/* ==================================================================
+   ── 初始化认证（应用启动时调用一次）──
+   ================================================================== */
+async function initAuth() {
+  // 始终先有本地后备 UID
+  ensureLocalUid()
+
+  try {
+    ensureInit()
+
+    if (!_auth.hasLoginState()) {
+      if (_authPromise) {
+        await _authPromise
+      } else {
+        _authPromise = _auth.signInAnonymously()
+        await _authPromise
+        _authPromise = null
+      }
+    }
+
+    if (_auth.hasLoginState()) {
+      _userId = _auth.getLoginState().user.uid
+    }
+  } catch {
+    // CloudBase 不可用，保持本地后备 UID
+  }
+
+  return _userId
+}
+
+/* ==================================================================
+   ── 确保认证（数据库操作前调用）──
+   ================================================================== */
 async function ensureAuth() {
   ensureInit()
   if (_auth.hasLoginState()) return
@@ -41,6 +83,9 @@ async function ensureAuth() {
 
   _authPromise = _auth.signInAnonymously().then(() => {
     _authPromise = null
+    if (_auth.hasLoginState()) {
+      _userId = _auth.getLoginState().user.uid
+    }
   }).catch(err => {
     _authPromise = null
     const msg = err.message || err.toString()
@@ -54,46 +99,30 @@ async function ensureAuth() {
 }
 
 /* ==================================================================
-   ── 测试模式用户身份（手机号 → uid）──
+   ── 用户 ID ──
    ================================================================== */
 export function getUserId() {
-  const phone = getItem('login_phone', 'session')
-  return phone ? 'phone_' + phone : null
-}
-
-export function setCurrentPhone(phone) {
-  setItem('login_phone', phone, 'session')
-}
-
-export function clearCurrentPhone() {
-  removeItem('login_phone', 'session')
+  if (!_userId) ensureLocalUid()
+  return _userId
 }
 
 export async function requireUserId() {
   await ensureAuth()
-  const uid = getUserId()
-  if (!uid) throw new Error('请先登录')
-  return uid
+  return getUserId()
 }
 
 /* ==================================================================
    ── 公开接口 ──
    ================================================================== */
 export function isLoggedIn() {
-  try {
-    return !!getItem('login_phone', 'session')
-  } catch {
-    return false
-  }
+  return true  // 匿名访问始终可用
 }
 
 export async function getCurrentUser() {
   try {
     await ensureAuth()
-    return getUserId() ? { uid: getUserId() } : null
-  } catch {
-    return null
-  }
+  } catch {}
+  return { uid: getUserId() }
 }
 
 /* ==================================================================
@@ -111,6 +140,6 @@ export const db = new Proxy({}, {
   get(_, prop) { ensureInit(); return _db[prop].bind(_db) }
 })
 
-export { _, ensureAuth }
+export { _, ensureAuth, initAuth }
 
 export default app
