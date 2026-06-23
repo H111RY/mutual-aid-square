@@ -71,8 +71,10 @@ export const useSquareStore = defineStore('square', () => {
 
   /* ── 发布新帖 ── */
   async function addPost(postData) {
+    console.log('[addPost] ========== 开始发布 ==========')
     const appStore = useAppStore()
     const uid = getUserId()
+    console.log('[addPost] 当前用户 UID:', uid)
     if (!uid) throw new Error('请先登录')
 
     const doc = {
@@ -89,8 +91,18 @@ export const useSquareStore = defineStore('square', () => {
       createdAt: db.serverDate(),
       updatedAt: db.serverDate()
     }
+    console.log('[addPost] 组装完成，帖子数据:', JSON.stringify(doc, null, 2))
 
-    const result = await db.collection('posts').add(doc)
+    console.log('[addPost] 准备调用 db.collection("posts").add() ...')
+    let result
+    try {
+      result = await db.collection('posts').add(doc)
+      console.log('[addPost] 写入成功！返回结果:', JSON.stringify(result, null, 2))
+    } catch (e) {
+      console.error('[addPost] 写入失败！错误:', e)
+      console.error('[addPost] 错误详情:', e.message, e.code, e.stack)
+      throw e
+    }
 
     const formatted = formatPost({
       _id: result.id,
@@ -98,6 +110,7 @@ export const useSquareStore = defineStore('square', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     })
+    console.log('[addPost] 格式化完成，本地帖子 ID:', formatted.id)
 
     const curTab = activeTabValue.value
     if (curTab === 'all' || curTab === postData.category) {
@@ -105,6 +118,7 @@ export const useSquareStore = defineStore('square', () => {
     }
     hasPublished.value = true
 
+    console.log('[addPost] ========== 发布流程结束 ==========')
     return formatted
   }
 
